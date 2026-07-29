@@ -1,0 +1,20 @@
+{
+  "name": "claude-governor",
+  "version": "0.1.0",
+  "description": "Make Claude Code aware of what it spends: context, the 5-hour window, and the codebase.",
+  "author": "Samala Vamshi (RealBizCraft)",
+  "homepage": "https://www.linkedin.com/in/samala-vamshi-211085413/",
+  "type": "module",
+  "bin": {
+    "governor": "./src/cli/governor.mjs"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\"",
+    "report": "node src/cli/governor.mjs report"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "private": true
+}

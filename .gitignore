@@ -1,0 +1,4 @@
+node_modules/
+.governor-routes.json
+HANDOFF.md
+.claude/settings.local.json
