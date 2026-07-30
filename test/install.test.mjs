@@ -249,6 +249,38 @@ test('uninstall removes the Plan Mode rule but keeps the rest of CLAUDE.md', asy
   assert.doesNotMatch(claudeMd, /governor:planmode/);
 });
 
+test('install writes the mistake-log rule to global CLAUDE.md, alongside the Plan Mode rule', async () => {
+  const dir = sandbox();
+  const { install } = await freshInstall(dir);
+  install({});
+  const claudeMd = fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8');
+  assert.match(claudeMd, /MISTAKES\.md/);
+  assert.match(claudeMd, /governor:mistakes:start/);
+  assert.match(claudeMd, /governor:planmode:start/, 'both blocks coexist');
+});
+
+test('uninstall removes the mistake-log rule but keeps the rest of CLAUDE.md', async () => {
+  const dir = sandbox();
+  fs.writeFileSync(path.join(dir, 'CLAUDE.md'), '# House rules\n\nAlways use tabs.\n');
+  const { install, uninstall } = await freshInstall(dir);
+  install({});
+  uninstall();
+  const claudeMd = fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8');
+  assert.match(claudeMd, /Always use tabs\./);
+  assert.doesNotMatch(claudeMd, /governor:mistakes/);
+});
+
+test('gv-mistakes skill is written and explains check-first, log-selectively', async () => {
+  const dir = sandbox();
+  const { install } = await freshInstall(dir);
+  install({});
+  const s = fs.readFileSync(path.join(dir, 'skills', 'gv-mistakes', 'SKILL.md'), 'utf8');
+  assert.match(s, /Check first/);
+  assert.match(s, /MISTAKES\.md/);
+  assert.match(s, /Symptom/);
+  assert.match(s, /Do not/);
+});
+
 test('gv-bugplan defaults to fixing directly — the plan is escalation, not the entry point', async () => {
   const dir = sandbox();
   const { install } = await freshInstall(dir);

@@ -141,11 +141,14 @@ tokens than it needed to because it never got tidied up automatically") — not 
 wrote there): whenever Plan Mode writes its final plan, it must also include a step-by-step
 **execution plan** — the CLI commands, files to create or modify, build order, and required
 config/setup for each phase — and predict a fix only for steps with a real, specific way to
-fail, not for every step. Re-training never duplicates it; `untrain` removes only this
-block and leaves everything else in your `CLAUDE.md` untouched.
+fail, not for every step. A second rule does the same for errors: before debugging
+something new, check `MISTAKES.md` in the project for a prior instance of it; log real
+fixes there so a mistake that's already been solved once doesn't get solved the hard way
+again. Both are fenced independently — re-training never duplicates either one, and
+`untrain` removes only what it added, leaving everything else in your `CLAUDE.md` untouched.
 
-**Six agents** (`gv-*`) with model, effort, `maxTurns` and tools **pinned**, and five skills
-(`gv-handoff`, `gv-retrieve`, `gv-delegate`, `gv-context-hygiene`, `gv-bugplan`).
+**Six agents** (`gv-*`) with model, effort, `maxTurns` and tools **pinned**, and six skills
+(`gv-handoff`, `gv-retrieve`, `gv-delegate`, `gv-context-hygiene`, `gv-bugplan`, `gv-mistakes`).
 
 `gv-bugplan` is deliberately a **triage gate, not a ceremony**: it checks the blast radius
 cheaply and tells you to just fix most bugs directly. Planning is escalation — for risky

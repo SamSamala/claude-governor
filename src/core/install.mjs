@@ -5,7 +5,10 @@ import { configDir, settingsPath, governorDir } from './paths.mjs';
 import { computeWindow, envOverride, isAcceptable } from './policy.mjs';
 import { loadConfig, saveConfig, DEFAULT_CONFIG } from './state.mjs';
 import { AGENTS, SKILLS } from './templates.mjs';
-import { upsertBlock, removeBlock, hasBlock, PLAN_MODE_ID, PLAN_MODE_BLOCK } from './claudemd.mjs';
+import {
+  upsertBlock, removeBlock, hasBlock,
+  PLAN_MODE_ID, PLAN_MODE_BLOCK, MISTAKES_ID, MISTAKES_BLOCK,
+} from './claudemd.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, '..');
@@ -232,6 +235,11 @@ export function install({ model, dryRun = false } = {}) {
     'execution plan (commands, files, order, config) and predict failures only where a ' +
     'real one is likely — not for every possible error.'
   );
+  notes.push(
+    'Added a second rule to your global CLAUDE.md: before debugging a new error, check ' +
+    'MISTAKES.md in the project for a prior instance of it; log real fixes there so the ' +
+    'same mistake is not solved twice.'
+  );
 
   if (dryRun) {
     return { dryRun: true, decision, settings, notes, warnings, probe: p.results };
@@ -243,6 +251,7 @@ export function install({ model, dryRun = false } = {}) {
     saveConfig(cfg);
     const artifacts = writeArtifacts();
     upsertBlock(claudeMdPath(), PLAN_MODE_ID, PLAN_MODE_BLOCK);
+    upsertBlock(claudeMdPath(), MISTAKES_ID, MISTAKES_BLOCK);
 
     // ---- read-back assert: the whole point. A written value that did not stick is a
     //      silent failure, which is the failure mode this project exists to prevent.
@@ -255,6 +264,9 @@ export function install({ model, dryRun = false } = {}) {
     }
     if (!hasBlock(claudeMdPath(), PLAN_MODE_ID)) {
       throw new Error('read-back mismatch: CLAUDE.md Plan Mode rule did not persist');
+    }
+    if (!hasBlock(claudeMdPath(), MISTAKES_ID)) {
+      throw new Error('read-back mismatch: CLAUDE.md mistake-log rule did not persist');
     }
 
     return { decision, notes, warnings, artifacts, backupPath, probe: p.results };
@@ -295,6 +307,7 @@ export function uninstall() {
   writeSettings(settings);
   saveConfig({ ...cfg, enabled: false });
   removeBlock(claudeMdPath(), PLAN_MODE_ID);
+  removeBlock(claudeMdPath(), MISTAKES_ID);
   if (wasOurDefault) {
     try { fs.unlinkSync(path.join(governorDir(), 'default-statusline.sh')); } catch { /* already gone */ }
   }

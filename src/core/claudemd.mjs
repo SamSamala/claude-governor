@@ -89,3 +89,26 @@ mismatch, network call, ambiguous flag, external service). Skip steps that
 essentially cannot fail (mkdir, writing a file). Planning for errors that
 won't happen wastes as many tokens as skipping the ones that will.
 `.trim();
+
+export const MISTAKES_ID = 'mistakes';
+
+export const MISTAKES_BLOCK = `
+## Don't repeat a solved error
+
+Before debugging a new error, check MISTAKES.md in the project root (if it
+exists) for a similar symptom — grep it first, don't re-diagnose blind. A
+match means: read the fix, try it directly.
+
+After resolving a REAL error (genuine diagnosis, not a typo or a one-line
+fix), append an entry to MISTAKES.md in this format:
+
+## <date> — <one-line symptom>
+**Symptom:** the error text or what broke
+**Cause:** the actual root cause, not the throw site
+**Fix:** what resolved it
+**Files:** paths involved
+
+Create the file on the first real entry — don't create it speculatively
+empty. Not every error earns an entry; a mistake worth logging is one that
+took real diagnosis to solve.
+`.trim();

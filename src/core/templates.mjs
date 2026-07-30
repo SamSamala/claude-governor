@@ -220,6 +220,7 @@ governor impact <file>      # mechanical; no file reading
 | you already tried once and were wrong | Plan — the assumption is the bug |
 | several related bugs | **One plan for the group**, never one per bug |
 | no route map yet | \`governor routes .\` once, then re-gate |
+| MISTAKES.md has this exact error already | Skip the gate — read the fix, apply it (see \`gv-mistakes\`) |
 
 Typos, off-by-one, a wrong constant, a missing null check in a leaf file: fix directly.
 Do **not** narrate the triage — just do it.
@@ -279,5 +280,41 @@ a 148-session bill. Context is re-read every single turn.
   automatically.
 - Reset at a natural seam — after something is finished and verified, not mid-debug.
 - A large tool result admitted early is the expensive kind. Later is cheaper.`,
+  ),
+
+  'gv-mistakes': skill(
+    'gv-mistakes',
+    'Check MISTAKES.md before debugging a new error; log real fixes there so the same mistake is never solved twice. Fires on "this failed", "error", "same issue as before", "why does X fail again".',
+    `# Don't solve the same error twice
+
+## Check first
+
+Before diagnosing, grep \`MISTAKES.md\` in the project root (if it exists) for keywords
+from the error. A match means: read the fix, try it directly. Don't re-run the full
+diagnosis on something already solved.
+
+## Log after — selectively
+
+Only real errors earn an entry: something that took genuine diagnosis to find the cause of.
+A typo or a one-line fix (already \`gv-bugplan\`'s "just fix it" case) is not worth logging —
+a file of noise is as useless as no file.
+
+Append to \`MISTAKES.md\` in this exact format:
+
+\`\`\`markdown
+## <date> — <one-line symptom>
+**Symptom:** the error text or what broke
+**Cause:** the actual root cause, not the throw site
+**Fix:** what resolved it
+**Files:** paths involved
+\`\`\`
+
+Create the file on the first real entry — never create it speculatively empty.
+
+## Do not
+
+- Log a typo, a one-line fix, or anything \`gv-bugplan\`'s gate would wave through directly.
+- Re-diagnose an error MISTAKES.md already has an entry for — apply the known fix first.
+- Let the file become a transcript. One entry per distinct root cause, not per occurrence.`,
   ),
 };
