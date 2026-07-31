@@ -85,9 +85,30 @@ A developer should be able to follow it without deciding what to do next.
 
 Predict failures selectively, not exhaustively. Add a one-line fix for a
 command/step only if it has a real, specific failure mode (version
-mismatch, network call, ambiguous flag, external service). Skip steps that
-essentially cannot fail (mkdir, writing a file). Planning for errors that
-won't happen wastes as many tokens as skipping the ones that will.
+mismatch, network call, ambiguous flag, external service, a known-fragile
+dependency — check its installed version before writing code against it).
+Skip steps that essentially cannot fail (mkdir, writing a file). Planning
+for errors that won't happen wastes as many tokens as skipping the ones
+that will.
+
+Verification is a gate per phase, not a reflex per edit. Run the
+type-check/lint/build cycle once when a phase is logically complete, not
+after every individual file change — mid-phase, trust the edit. If a phase
+needs a throwaway verification script, reuse ONE scratch file across the
+whole plan (e.g. \`_scratch-verify.ts\`), overwritten each time and deleted
+once at the end — never one new file per phase.
+
+If the task ships something (deploys, publishes, goes to prod), include an
+explicit Deploy phase with its own commands — don't leave commit/push to be
+improvised after the last verification step. First command of that phase:
+confirm a git identity is actually configured (\`git config user.email\`) —
+an unconfigured one silently auto-derives a bogus address and fails deploy
+platforms that verify commit authorship.
+
+If something unrelated to this plan surfaces mid-build (a bug in a
+different area, a security concern, an unrelated investigation), note it
+and stop — do not fold it into this plan's phases. Flag it to the user as a
+separate follow-up instead of expanding scope live.
 `.trim();
 
 export const MISTAKES_ID = 'mistakes';
