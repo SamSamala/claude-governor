@@ -112,3 +112,20 @@ Create the file on the first real entry — don't create it speculatively
 empty. Not every error earns an entry; a mistake worth logging is one that
 took real diagnosis to solve.
 `.trim();
+
+export const ROUTING_ID = 'subagentrouting';
+
+export const ROUTING_BLOCK = `
+## Subagents: route by task, never inherit by default
+
+Don't let a subagent silently inherit the parent session's model and effort
+— choose per task:
+- Haiku: reading, searching, editing, formatting, summarizing, other simple
+  tasks.
+- Sonnet: feature implementation, refactoring, testing, moderate debugging.
+- Opus: architecture, complex debugging, deep reasoning, multi-step
+  planning.
+
+Effort defaults to low or medium. Reserve high for tasks that genuinely
+need extensive reasoning — it is expensive, not a default.
+`.trim();

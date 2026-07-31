@@ -144,8 +144,16 @@ config/setup for each phase — and predict a fix only for steps with a real, sp
 fail, not for every step. A second rule does the same for errors: before debugging
 something new, check `MISTAKES.md` in the project for a prior instance of it; log real
 fixes there so a mistake that's already been solved once doesn't get solved the hard way
-again. Both are fenced independently — re-training never duplicates either one, and
-`untrain` removes only what it added, leaving everything else in your `CLAUDE.md` untouched.
+again. A third rule routes subagents by task instead of letting them silently inherit the
+parent's model/effort — haiku for simple work, sonnet for feature work, opus for hard
+reasoning. All three are fenced independently — re-training never duplicates any of them,
+and `untrain` removes only what it added, leaving everything else in your `CLAUDE.md`
+untouched.
+
+**`governor on`/`governor off` own all three rules too, mechanically — not by asking Claude
+to edit the file.** `off` removes all three CLAUDE.md rules and silences every hook and
+statusline addition in one deterministic step; `on` restores all three. Nothing stays
+quietly active while it says OFF.
 
 **Six agents** (`gv-*`) with model, effort, `maxTurns` and tools **pinned**, and six skills
 (`gv-handoff`, `gv-retrieve`, `gv-delegate`, `gv-context-hygiene`, `gv-bugplan`, `gv-mistakes`).

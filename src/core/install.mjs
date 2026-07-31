@@ -7,7 +7,7 @@ import { loadConfig, saveConfig, DEFAULT_CONFIG } from './state.mjs';
 import { AGENTS, SKILLS } from './templates.mjs';
 import {
   upsertBlock, removeBlock, hasBlock,
-  PLAN_MODE_ID, PLAN_MODE_BLOCK, MISTAKES_ID, MISTAKES_BLOCK,
+  PLAN_MODE_ID, PLAN_MODE_BLOCK, MISTAKES_ID, MISTAKES_BLOCK, ROUTING_ID, ROUTING_BLOCK,
 } from './claudemd.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -240,6 +240,11 @@ export function install({ model, dryRun = false } = {}) {
     'MISTAKES.md in the project for a prior instance of it; log real fixes there so the ' +
     'same mistake is not solved twice.'
   );
+  notes.push(
+    'Added a third rule to your global CLAUDE.md: subagents get routed by task (haiku for ' +
+    'simple work, sonnet for feature work, opus for hard reasoning), never inherit the ' +
+    'parent model/effort by default.'
+  );
 
   if (dryRun) {
     return { dryRun: true, decision, settings, notes, warnings, probe: p.results };
@@ -252,6 +257,7 @@ export function install({ model, dryRun = false } = {}) {
     const artifacts = writeArtifacts();
     upsertBlock(claudeMdPath(), PLAN_MODE_ID, PLAN_MODE_BLOCK);
     upsertBlock(claudeMdPath(), MISTAKES_ID, MISTAKES_BLOCK);
+    upsertBlock(claudeMdPath(), ROUTING_ID, ROUTING_BLOCK);
 
     // ---- read-back assert: the whole point. A written value that did not stick is a
     //      silent failure, which is the failure mode this project exists to prevent.
@@ -267,6 +273,9 @@ export function install({ model, dryRun = false } = {}) {
     }
     if (!hasBlock(claudeMdPath(), MISTAKES_ID)) {
       throw new Error('read-back mismatch: CLAUDE.md mistake-log rule did not persist');
+    }
+    if (!hasBlock(claudeMdPath(), ROUTING_ID)) {
+      throw new Error('read-back mismatch: CLAUDE.md subagent-routing rule did not persist');
     }
 
     return { decision, notes, warnings, artifacts, backupPath, probe: p.results };
@@ -308,6 +317,7 @@ export function uninstall() {
   saveConfig({ ...cfg, enabled: false });
   removeBlock(claudeMdPath(), PLAN_MODE_ID);
   removeBlock(claudeMdPath(), MISTAKES_ID);
+  removeBlock(claudeMdPath(), ROUTING_ID);
   if (wasOurDefault) {
     try { fs.unlinkSync(path.join(governorDir(), 'default-statusline.sh')); } catch { /* already gone */ }
   }

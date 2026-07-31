@@ -259,6 +259,47 @@ test('install writes the mistake-log rule to global CLAUDE.md, alongside the Pla
   assert.match(claudeMd, /governor:planmode:start/, 'both blocks coexist');
 });
 
+test('install writes the subagent-routing rule to global CLAUDE.md, all three blocks present', async () => {
+  const dir = sandbox();
+  const { install } = await freshInstall(dir);
+  install({});
+  const claudeMd = fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8');
+  assert.match(claudeMd, /governor:subagentrouting:start/);
+  assert.match(claudeMd, /Haiku:.*reading, searching/);
+  assert.match(claudeMd, /Opus:.*architecture/);
+  assert.match(claudeMd, /governor:planmode:start/);
+  assert.match(claudeMd, /governor:mistakes:start/);
+});
+
+test('BUG REGRESSION — governor off must remove ALL CLAUDE.md rules, not just flip a flag', async () => {
+  const dir = sandbox();
+  process.env.CLAUDE_CONFIG_DIR = dir;
+  fs.writeFileSync(path.join(dir, 'CLAUDE.md'), '# House rules\n\nAlways use tabs.\n');
+  const { install } = await import(`../src/core/install.mjs?v=${Math.random()}`);
+  install({});
+
+  const { execFileSync } = await import('node:child_process');
+  const { fileURLToPath } = await import('node:url');
+  const cliPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'cli', 'governor.mjs');
+  const run = (cmd) => execFileSync(process.execPath, [cliPath, cmd], {
+    env: { ...process.env, CLAUDE_CONFIG_DIR: dir },
+  });
+
+  run('off');
+  let claudeMd = fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8');
+  assert.match(claudeMd, /Always use tabs\./, 'user content survives');
+  assert.doesNotMatch(claudeMd, /governor:planmode/, 'off removes the Plan Mode rule');
+  assert.doesNotMatch(claudeMd, /governor:mistakes/, 'off removes the mistake-log rule');
+  assert.doesNotMatch(claudeMd, /governor:subagentrouting/, 'off removes the routing rule');
+
+  run('on');
+  claudeMd = fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8');
+  assert.match(claudeMd, /Always use tabs\./, 'user content still survives');
+  assert.match(claudeMd, /governor:planmode:start/, 'on restores the Plan Mode rule');
+  assert.match(claudeMd, /governor:mistakes:start/, 'on restores the mistake-log rule');
+  assert.match(claudeMd, /governor:subagentrouting:start/, 'on restores the routing rule');
+});
+
 test('uninstall removes the mistake-log rule but keeps the rest of CLAUDE.md', async () => {
   const dir = sandbox();
   fs.writeFileSync(path.join(dir, 'CLAUDE.md'), '# House rules\n\nAlways use tabs.\n');

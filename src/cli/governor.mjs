@@ -14,7 +14,17 @@ import { saveBaseline, loadBaseline, compare } from '../core/proof.mjs';
 import { loadIndex } from '../routes/refresh.mjs';
 import { impactOf } from '../routes/impact.mjs';
 import { selfCost } from '../core/selfcost.mjs';
-import { hasBlock, PLAN_MODE_ID } from '../core/claudemd.mjs';
+import {
+  upsertBlock, removeBlock, hasBlock,
+  PLAN_MODE_ID, PLAN_MODE_BLOCK, MISTAKES_ID, MISTAKES_BLOCK, ROUTING_ID, ROUTING_BLOCK,
+} from '../core/claudemd.mjs';
+
+const claudeMdPath = () => path.join(configDir(), 'CLAUDE.md');
+const CLAUDE_MD_BLOCKS = [
+  [PLAN_MODE_ID, PLAN_MODE_BLOCK],
+  [MISTAKES_ID, MISTAKES_BLOCK],
+  [ROUTING_ID, ROUTING_BLOCK],
+];
 
 const pct = (x) => `${(x * 100).toFixed(1)}%`;
 const pad = (s, n) => String(s).padEnd(n);
@@ -350,14 +360,19 @@ async function cmdBaseline() {
 async function cmdOn() {
   const cfg = loadConfig();
   saveConfig({ ...cfg, enabled: true });
-  console.log(`\n  ${G}Governor ON.${R} The statusline will show it on the next update.\n`);
+  // Mechanical, not LLM: on/off must fully own the CLAUDE.md rules too, or "off" is a lie —
+  // the rules would keep silently shaping every plan/response while the toggle says OFF.
+  for (const [id, block] of CLAUDE_MD_BLOCKS) upsertBlock(claudeMdPath(), id, block);
+  console.log(`\n  ${G}Governor ON.${R} CLAUDE.md rules restored; the statusline will show it on the next update.\n`);
 }
 
 async function cmdOff() {
   const cfg = loadConfig();
   saveConfig({ ...cfg, enabled: false });
-  console.log(`\n  ${Y}Governor OFF.${R} Hooks and the statusline stop touching anything —`);
-  console.log(`  your original statusline (if any) still renders underneath. ${D}governor on${R} to resume.\n`);
+  for (const [id] of CLAUDE_MD_BLOCKS) removeBlock(claudeMdPath(), id);
+  console.log(`\n  ${Y}Governor OFF.${R} Hooks, the statusline additions, and the CLAUDE.md`);
+  console.log(`  rules all stop — nothing is left quietly active. Your original statusline`);
+  console.log(`  (if any) still renders underneath. ${D}governor on${R} to resume.\n`);
 }
 
 async function cmdDiff() {
