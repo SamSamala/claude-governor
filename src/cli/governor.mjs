@@ -7,7 +7,10 @@ import { rates, fmtUSD, fmtTok } from '../core/price.mjs';
 import { computeWindow, envOverride, DEFAULT_PCT } from '../core/policy.mjs';
 import { simulateAll, actualTotal, OBSERVED_TRIGGER_FRACTION } from '../core/sim.mjs';
 import { install, uninstall, probe } from '../core/install.mjs';
-import { loadConfig, saveConfig, countLimitStates, listLimitStates } from '../core/state.mjs';
+import {
+  loadConfig, saveConfig, saveProjectConfig, readProjectConfig, countLimitStates, listLimitStates,
+} from '../core/state.mjs';
+import { projectConfigPath } from '../core/paths.mjs';
 import { spawnSync } from 'node:child_process';
 import { refresh, saveIndex } from '../routes/refresh.mjs';
 import { saveBaseline, loadBaseline, compare } from '../core/proof.mjs';
@@ -15,8 +18,9 @@ import { loadIndex } from '../routes/refresh.mjs';
 import { impactOf } from '../routes/impact.mjs';
 import { selfCost } from '../core/selfcost.mjs';
 import {
-  upsertBlock, removeBlock, hasBlock,
+  upsertBlock, hasBlock, isActive, withStatus,
   PLAN_MODE_ID, PLAN_MODE_BLOCK, MISTAKES_ID, MISTAKES_BLOCK, ROUTING_ID, ROUTING_BLOCK,
+  PROJECT_OVERRIDE_ID, projectOverrideBlock,
 } from '../core/claudemd.mjs';
 
 const claudeMdPath = () => path.join(configDir(), 'CLAUDE.md');
@@ -241,7 +245,8 @@ async function cmdVerify() {
   const slConfigured = String(s.statusLine?.command || '').toLowerCase().includes('governor');
   const events = Object.keys(s.hooks || {});
   const hooksConfigured = ['PreToolUse', 'PostToolBatch', 'SessionStart'].every((e) => events.includes(e));
-  const planModeConfigured = hasBlock(path.join(configDir(), 'CLAUDE.md'), PLAN_MODE_ID);
+  const planModeConfigured = isActive(path.join(configDir(), 'CLAUDE.md'), PLAN_MODE_ID);
+  const projectOverride = readProjectConfig(process.cwd());
 
   const states = listLimitStates();
   const fresh = states.filter((st) => st.ageMs < 2 * 60_000); // touched in the last 2 minutes
@@ -254,6 +259,9 @@ async function cmdVerify() {
   console.log(`  Status line turned on:      ${ok(slConfigured)}`);
   console.log(`  Alerts turned on:           ${ok(hooksConfigured)}`);
   console.log(`  Plan Mode gives full steps: ${ok(planModeConfigured)}`);
+  if (projectOverride && typeof projectOverride.enabled === 'boolean') {
+    console.log(`  ${D}Project override here:      ${projectOverride.enabled ? 'ON' : 'OFF'} (this folder only)${R}`);
+  }
   console.log();
 
   if (!nodeOk) {
@@ -297,8 +305,14 @@ async function cmdDoctor() {
   console.log(`  triggers near        ~${Math.round((s.autoCompactWindow || d.modelWindow) * OBSERVED_TRIGGER_FRACTION).toLocaleString('en-US')} tokens`);
   const env = envOverride();
   if (env) console.log(`  ${Y}! ${env.message}${R}`);
-  const planModeConfigured = hasBlock(path.join(configDir(), 'CLAUDE.md'), PLAN_MODE_ID);
-  console.log(`  Plan Mode execution rule ${planModeConfigured ? `${G}installed${R}` : `${RD}not installed${R}`} ${D}(global CLAUDE.md)${R}`);
+  const planModePresent = hasBlock(path.join(configDir(), 'CLAUDE.md'), PLAN_MODE_ID);
+  const planModeActive = isActive(path.join(configDir(), 'CLAUDE.md'), PLAN_MODE_ID);
+  const planModeState = !planModePresent ? `${RD}not installed${R}` : planModeActive ? `${G}active${R}` : `${Y}installed, paused (off)${R}`;
+  console.log(`  Plan Mode execution rule ${planModeState} ${D}(global CLAUDE.md)${R}`);
+  const projOverride = readProjectConfig(process.cwd());
+  if (projOverride && typeof projOverride.enabled === 'boolean') {
+    console.log(`  Project override here    ${projOverride.enabled ? `${G}ON${R}` : `${RD}OFF${R}`} ${D}(${process.cwd()})${R}`);
+  }
 
   head('5-HOUR SENSOR');
   // Each Claude Code window tracks its OWN reading (see state.mjs) — a CLI command run
@@ -357,22 +371,46 @@ async function cmdBaseline() {
 
 /* --------------------------------------------------------------- on / off */
 
-async function cmdOn() {
+/**
+ * Mechanical, not LLM: on/off owns the CLAUDE.md rules too, or "off" is a lie — the rules
+ * would keep silently shaping every plan/response while the toggle says OFF. Rules are
+ * toggled IN PLACE (a status line changes, the block never disappears/reappears) — a block
+ * that vanishes and comes back looks exactly like injected content being added and removed,
+ * which is what got Governor's own rules flagged as a suspected injection in a different
+ * session. `governor doctor`/the ABOUT block explain what these are to anyone who's unsure.
+ */
+async function cmdOn(projectScope) {
+  if (projectScope) {
+    const cwd = process.cwd();
+    saveProjectConfig(cwd, { enabled: true });
+    upsertBlock(path.join(cwd, 'CLAUDE.md'), PROJECT_OVERRIDE_ID, projectOverrideBlock(true));
+    console.log(`\n  ${G}Governor ON${R} for this project (${D}${cwd}${R}).`);
+    console.log(`  Global default is untouched — this only overrides it here.\n`);
+    return;
+  }
   const cfg = loadConfig();
   saveConfig({ ...cfg, enabled: true });
-  // Mechanical, not LLM: on/off must fully own the CLAUDE.md rules too, or "off" is a lie —
-  // the rules would keep silently shaping every plan/response while the toggle says OFF.
-  for (const [id, block] of CLAUDE_MD_BLOCKS) upsertBlock(claudeMdPath(), id, block);
-  console.log(`\n  ${G}Governor ON.${R} CLAUDE.md rules restored; the statusline will show it on the next update.\n`);
+  for (const [id, block] of CLAUDE_MD_BLOCKS) upsertBlock(claudeMdPath(), id, withStatus(block, true));
+  console.log(`\n  ${G}Governor ON${R} globally. CLAUDE.md rules reactivated; the statusline`);
+  console.log(`  will show it on the next update.\n`);
 }
 
-async function cmdOff() {
+async function cmdOff(projectScope) {
+  if (projectScope) {
+    const cwd = process.cwd();
+    saveProjectConfig(cwd, { enabled: false });
+    upsertBlock(path.join(cwd, 'CLAUDE.md'), PROJECT_OVERRIDE_ID, projectOverrideBlock(false));
+    console.log(`\n  ${Y}Governor OFF${R} for this project (${D}${cwd}${R}) only.`);
+    console.log(`  Every other project, and the global default, are untouched.`);
+    console.log(`  ${D}governor on --project${R} here to resume, from inside this same folder.\n`);
+    return;
+  }
   const cfg = loadConfig();
   saveConfig({ ...cfg, enabled: false });
-  for (const [id] of CLAUDE_MD_BLOCKS) removeBlock(claudeMdPath(), id);
-  console.log(`\n  ${Y}Governor OFF.${R} Hooks, the statusline additions, and the CLAUDE.md`);
-  console.log(`  rules all stop — nothing is left quietly active. Your original statusline`);
-  console.log(`  (if any) still renders underneath. ${D}governor on${R} to resume.\n`);
+  for (const [id, block] of CLAUDE_MD_BLOCKS) upsertBlock(claudeMdPath(), id, withStatus(block, false));
+  console.log(`\n  ${Y}Governor OFF${R} globally. Hooks, statusline additions, and CLAUDE.md`);
+  console.log(`  rules all pause everywhere — nothing is left quietly active. Your original`);
+  console.log(`  statusline (if any) still renders underneath. ${D}governor on${R} to resume.\n`);
 }
 
 async function cmdDiff() {
@@ -517,6 +555,7 @@ function usage() {
       ${D}--dry-run${R}  show what would change, write nothing
     ${B}untrain${R}      remove everything, restore your previous statusline
     ${B}on${R} / ${B}off${R}    pause or resume, without untraining — statusline shows which
+      ${D}--project${R}  scope to this folder only, instead of everywhere
     ${B}verify${R}       plain-language check: is it actually working right now
     ${B}doctor${R}       probe capabilities and show current state
     ${B}routes${R} [dir] build ROUTES.md so Claude stops re-reading the codebase
@@ -538,8 +577,8 @@ try {
     case 'gate0': await cmdGate0(); break;
     case 'train': case 'install': await cmdInstall(flags.includes('--dry-run')); break;
     case 'untrain': case 'uninstall': case 'remove': await cmdUninstall(); break;
-    case 'on': await cmdOn(); break;
-    case 'off': await cmdOff(); break;
+    case 'on': await cmdOn(flags.includes('--project')); break;
+    case 'off': await cmdOff(flags.includes('--project')); break;
     case 'verify': await cmdVerify(); break;
     case 'doctor': await cmdDoctor(); break;
     case 'routes': await cmdRoutes(); break;

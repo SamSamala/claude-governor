@@ -271,7 +271,11 @@ test('install writes the subagent-routing rule to global CLAUDE.md, all three bl
   assert.match(claudeMd, /governor:mistakes:start/);
 });
 
-test('BUG REGRESSION — governor off must remove ALL CLAUDE.md rules, not just flip a flag', async () => {
+test('BUG REGRESSION — governor off must pause ALL CLAUDE.md rules IN PLACE, not just flip a hidden flag', async () => {
+  // The original fix (delete-on-off) got superseded: a block that vanishes and reappears
+  // looks exactly like injected content being added/removed, which got Governor's own
+  // rules flagged as a suspected injection in a different session. The correct behavior is
+  // now: content stays, only a Status: ACTIVE/INACTIVE line flips — verified here.
   const dir = sandbox();
   process.env.CLAUDE_CONFIG_DIR = dir;
   fs.writeFileSync(path.join(dir, 'CLAUDE.md'), '# House rules\n\nAlways use tabs.\n');
@@ -284,20 +288,72 @@ test('BUG REGRESSION — governor off must remove ALL CLAUDE.md rules, not just 
   const run = (cmd) => execFileSync(process.execPath, [cliPath, cmd], {
     env: { ...process.env, CLAUDE_CONFIG_DIR: dir },
   });
+  const { isActive } = await import(`../src/core/claudemd.mjs?v=${Math.random()}`);
+  const claudeMdFile = path.join(dir, 'CLAUDE.md');
 
   run('off');
-  let claudeMd = fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8');
+  let claudeMd = fs.readFileSync(claudeMdFile, 'utf8');
   assert.match(claudeMd, /Always use tabs\./, 'user content survives');
-  assert.doesNotMatch(claudeMd, /governor:planmode/, 'off removes the Plan Mode rule');
-  assert.doesNotMatch(claudeMd, /governor:mistakes/, 'off removes the mistake-log rule');
-  assert.doesNotMatch(claudeMd, /governor:subagentrouting/, 'off removes the routing rule');
+  assert.match(claudeMd, /governor:planmode:start/, 'block stays present, not deleted');
+  assert.match(claudeMd, /Execution Plan/, 'full rule text stays present, not deleted');
+  assert.equal(isActive(claudeMdFile, 'planmode'), false, 'but marked inactive');
+  assert.equal(isActive(claudeMdFile, 'mistakes'), false);
+  assert.equal(isActive(claudeMdFile, 'subagentrouting'), false);
 
   run('on');
-  claudeMd = fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8');
+  claudeMd = fs.readFileSync(claudeMdFile, 'utf8');
   assert.match(claudeMd, /Always use tabs\./, 'user content still survives');
-  assert.match(claudeMd, /governor:planmode:start/, 'on restores the Plan Mode rule');
-  assert.match(claudeMd, /governor:mistakes:start/, 'on restores the mistake-log rule');
-  assert.match(claudeMd, /governor:subagentrouting:start/, 'on restores the routing rule');
+  assert.equal(isActive(claudeMdFile, 'planmode'), true, 'reactivated');
+  assert.equal(isActive(claudeMdFile, 'mistakes'), true);
+  assert.equal(isActive(claudeMdFile, 'subagentrouting'), true);
+});
+
+test('project-scoped on/off does not touch global state', async () => {
+  const dir = sandbox();
+  process.env.CLAUDE_CONFIG_DIR = dir;
+  const { install } = await import(`../src/core/install.mjs?v=${Math.random()}`);
+  install({});
+
+  const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gv-proj-'));
+  const { execFileSync } = await import('node:child_process');
+  const { fileURLToPath } = await import('node:url');
+  const cliPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'cli', 'governor.mjs');
+  const run = (args) => execFileSync(process.execPath, [cliPath, ...args], {
+    cwd: projectDir,
+    env: { ...process.env, CLAUDE_CONFIG_DIR: dir },
+  });
+
+  run(['off', '--project']);
+
+  const projectCfg = JSON.parse(fs.readFileSync(path.join(projectDir, '.governor', 'config.json'), 'utf8'));
+  assert.equal(projectCfg.enabled, false, 'project override written');
+
+  const globalCfg = JSON.parse(fs.readFileSync(path.join(dir, 'governor', 'config.json'), 'utf8'));
+  assert.equal(globalCfg.enabled, true, 'global config untouched by a project-scoped off');
+
+  const { isActive } = await import(`../src/core/claudemd.mjs?v=${Math.random()}`);
+  assert.equal(isActive(path.join(dir, 'CLAUDE.md'), 'planmode'), true, 'global CLAUDE.md rules untouched');
+
+  const projectClaudeMd = fs.readFileSync(path.join(projectDir, 'CLAUDE.md'), 'utf8');
+  assert.match(projectClaudeMd, /explicitly OFF for this project/);
+
+  run(['on', '--project']);
+  const projectCfg2 = JSON.parse(fs.readFileSync(path.join(projectDir, '.governor', 'config.json'), 'utf8'));
+  assert.equal(projectCfg2.enabled, true, 'project override flips back on');
+});
+
+test('project override actually silences a hook, without touching another project', async () => {
+  const { loadConfig, saveProjectConfig } = await import(`../src/core/state.mjs?v=${Math.random()}`);
+  const dir = sandbox();
+  process.env.CLAUDE_CONFIG_DIR = dir;
+  const projA = fs.mkdtempSync(path.join(os.tmpdir(), 'gv-projA-'));
+  const projB = fs.mkdtempSync(path.join(os.tmpdir(), 'gv-projB-'));
+
+  saveProjectConfig(projA, { enabled: false });
+
+  assert.equal(loadConfig(projA).enabled, false, 'project A is off');
+  assert.equal(loadConfig(projB).enabled, true, 'project B, untouched, stays on the global default');
+  assert.equal(loadConfig().enabled, true, 'no cwd at all -> pure global, unaffected');
 });
 
 test('uninstall removes the mistake-log rule but keeps the rest of CLAUDE.md', async () => {

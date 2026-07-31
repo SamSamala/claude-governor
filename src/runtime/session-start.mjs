@@ -42,7 +42,7 @@ function main() {
   let payload = {};
   try { payload = JSON.parse(raw); } catch { /* ignore */ }
 
-  const cfg = loadConfig();
+  const cfg = loadConfig(payload?.cwd);
   if (cfg.enabled === false) return;
 
   // `resume` already carries the conversation; injecting again would duplicate it.

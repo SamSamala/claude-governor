@@ -84,7 +84,7 @@ function main() {
   let payload = {};
   try { payload = JSON.parse(raw); } catch { return; }
 
-  const cfg = loadConfig();
+  const cfg = loadConfig(payload?.cwd);
   if (cfg.enabled === false) return;
 
   const tool = payload?.tool_name;

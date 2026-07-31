@@ -164,6 +164,25 @@ test('guard advises on an unbounded Read of a large file', () => {
   assert.match(JSON.parse(out).hookSpecificOutput.additionalContext, /offset.*limit|limit/);
 });
 
+test('a project-level override silences guard.mjs for that project only, via payload.cwd', async () => {
+  const dir = sandbox();
+  const { saveProjectConfig } = await import(`../src/core/state.mjs?v=${Math.random()}`);
+  const projA = fs.mkdtempSync(path.join(os.tmpdir(), 'gv-projA-'));
+  const projB = fs.mkdtempSync(path.join(os.tmpdir(), 'gv-projB-'));
+  saveProjectConfig(projA, { enabled: false });
+
+  const big = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gv-big-')), 'big.txt');
+  fs.writeFileSync(big, 'x'.repeat(300_000));
+
+  const silenced = run('guard.mjs',
+    { tool_name: 'Read', session_id: 'g1', cwd: projA, tool_input: { file_path: big } }, dir);
+  assert.equal(silenced, '', 'project A is off — guard says nothing');
+
+  const stillWorks = run('guard.mjs',
+    { tool_name: 'Read', session_id: 'g2', cwd: projB, tool_input: { file_path: big } }, dir);
+  assert.match(stillWorks, /governor-guard/, 'project B, untouched, still gets advised');
+});
+
 test('guard stays SILENT on already-bounded calls (false positives get it uninstalled)', () => {
   const dir = sandbox();
   const big = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gv-big-')), 'big.txt');

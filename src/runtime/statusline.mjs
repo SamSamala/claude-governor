@@ -21,13 +21,14 @@ const YEL = '\x1b[33m', RED = '\x1b[31m', GRN = '\x1b[32m', CYAN = '\x1b[36m';
 
 /** Bold state word in its color, dim connective text, the command itself bold+cyan so it
  * visually stands out as something to type — not just more descriptive prose. */
-function toggleLabel(isOn) {
+function toggleLabel(isOn, isProjectOverride) {
   const word = isOn
     ? `${BOLD}${GRN}Governor ON${RESET}`
     : `${BOLD}${RED}Governor OFF${RESET}`;
-  const cmd = isOn ? 'governor off' : 'governor on';
+  const scope = isProjectOverride ? `${DIM} (this project only)${RESET}` : '';
+  const cmd = `governor ${isOn ? 'off' : 'on'}${isProjectOverride ? ' --project' : ''}`;
   const verb = isOn ? 'disable' : 'enable';
-  return `${word}${DIM} — run ${RESET}${BOLD}${CYAN}${cmd}${RESET}${DIM} to ${verb}${RESET}`;
+  return `${word}${scope}${DIM} — run ${RESET}${BOLD}${CYAN}${cmd}${RESET}${DIM} to ${verb}${RESET}`;
 }
 
 function readStdin() {
@@ -169,7 +170,7 @@ function render(payload, cfg, state, wrappedText = '') {
   // Real, not decorative: this function only runs when cfg.enabled is true (see main()),
   // so reaching this line IS the proof. The OFF case is rendered separately in main(),
   // where Governor has stopped doing anything but still owns the statusline command.
-  parts.push(toggleLabel(true));
+  parts.push(toggleLabel(true, cfg.projectOverride));
 
   return parts.join(` ${DIM}·${RESET} `);
 }
@@ -212,12 +213,16 @@ function main() {
     payload = JSON.parse(raw);
   } catch { /* render what little we can */ }
 
-  const cfg = loadConfig();
+  // Real statusline payloads carry the current project dir at `workspace.current_dir`
+  // (verified against a live captured payload) — needed so a project-scoped
+  // `governor off --project` is actually detected here, not just at the global default.
+  const cwd = payload?.workspace?.current_dir || payload?.cwd;
+  const cfg = loadConfig(cwd);
   if (cfg.enabled === false) {
     // Soft-disabled via `governor off`: stop touching state/hooks entirely, but say so —
     // a silently-vanished tool looks identical to a broken one. `governor on` reverses it.
     const w = wrapped(cfg, raw);
-    const off = toggleLabel(false);
+    const off = toggleLabel(false, cfg.projectOverride);
     process.stdout.write(stack(w, off));
     return;
   }

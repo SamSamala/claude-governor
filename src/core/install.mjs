@@ -6,8 +6,9 @@ import { computeWindow, envOverride, isAcceptable } from './policy.mjs';
 import { loadConfig, saveConfig, DEFAULT_CONFIG } from './state.mjs';
 import { AGENTS, SKILLS } from './templates.mjs';
 import {
-  upsertBlock, removeBlock, hasBlock,
+  upsertBlock, removeBlock, hasBlock, withStatus,
   PLAN_MODE_ID, PLAN_MODE_BLOCK, MISTAKES_ID, MISTAKES_BLOCK, ROUTING_ID, ROUTING_BLOCK,
+  ABOUT_ID, ABOUT_BLOCK,
 } from './claudemd.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -255,9 +256,10 @@ export function install({ model, dryRun = false } = {}) {
     writeSettings(settings);
     saveConfig(cfg);
     const artifacts = writeArtifacts();
-    upsertBlock(claudeMdPath(), PLAN_MODE_ID, PLAN_MODE_BLOCK);
-    upsertBlock(claudeMdPath(), MISTAKES_ID, MISTAKES_BLOCK);
-    upsertBlock(claudeMdPath(), ROUTING_ID, ROUTING_BLOCK);
+    upsertBlock(claudeMdPath(), ABOUT_ID, ABOUT_BLOCK);
+    upsertBlock(claudeMdPath(), PLAN_MODE_ID, withStatus(PLAN_MODE_BLOCK, true));
+    upsertBlock(claudeMdPath(), MISTAKES_ID, withStatus(MISTAKES_BLOCK, true));
+    upsertBlock(claudeMdPath(), ROUTING_ID, withStatus(ROUTING_BLOCK, true));
 
     // ---- read-back assert: the whole point. A written value that did not stick is a
     //      silent failure, which is the failure mode this project exists to prevent.
@@ -276,6 +278,9 @@ export function install({ model, dryRun = false } = {}) {
     }
     if (!hasBlock(claudeMdPath(), ROUTING_ID)) {
       throw new Error('read-back mismatch: CLAUDE.md subagent-routing rule did not persist');
+    }
+    if (!hasBlock(claudeMdPath(), ABOUT_ID)) {
+      throw new Error('read-back mismatch: CLAUDE.md About/identity block did not persist');
     }
 
     return { decision, notes, warnings, artifacts, backupPath, probe: p.results };
@@ -318,6 +323,7 @@ export function uninstall() {
   removeBlock(claudeMdPath(), PLAN_MODE_ID);
   removeBlock(claudeMdPath(), MISTAKES_ID);
   removeBlock(claudeMdPath(), ROUTING_ID);
+  removeBlock(claudeMdPath(), ABOUT_ID);
   if (wasOurDefault) {
     try { fs.unlinkSync(path.join(governorDir(), 'default-statusline.sh')); } catch { /* already gone */ }
   }

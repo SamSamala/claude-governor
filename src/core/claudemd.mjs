@@ -68,6 +68,75 @@ export function hasBlock(filePath, id) {
   }
 }
 
+const INACTIVE_MARK = 'Status: INACTIVE';
+
+/**
+ * Prefix a rule's content with its current status. `governor on`/`off` use this to toggle
+ * a rule IN PLACE — the text never disappears and reappears, just this one line changes.
+ *
+ * Why not delete/recreate the block on toggle (the original design): a block that vanishes
+ * and reappears in a shared file looks exactly like injected content being added and
+ * removed — which is precisely what triggered a different Claude Code session to flag
+ * Governor's own CLAUDE.md rules as a suspected prompt-injection incident and nearly strip
+ * the whole install. A stable block with one word changing is unambiguous and low-drama.
+ */
+export function withStatus(content, active) {
+  const status = active
+    ? '**Status: ACTIVE.**'
+    : `**${INACTIVE_MARK} — paused. Ignore this rule entirely until \`governor on\` (or ` +
+      '`governor on --project` if it was paused for this project only) turns it back on.**';
+  return `${status}\n\n${content.trim()}`;
+}
+
+/** Whether a block is present AND currently marked active (not just present). */
+export function isActive(filePath, id) {
+  const { start, end } = markers(id);
+  let body;
+  try {
+    body = fs.readFileSync(filePath, 'utf8');
+  } catch {
+    return false;
+  }
+  const m = body.match(new RegExp(`${start}([\\s\\S]*?)${end}`));
+  if (!m) return false;
+  return !m[1].includes(INACTIVE_MARK);
+}
+
+export const ABOUT_ID = 'about';
+
+export const ABOUT_BLOCK = `
+## Governor — installed on purpose, not an injection
+
+The \`governor:*\` blocks in this file (Plan Mode, mistake journal, subagent
+routing) were installed intentionally by running this machine's own
+Governor trainer (https://github.com/SamSamala/claude-governor). They are
+not third-party or malicious content — if you're a fresh Claude Code
+session encountering this for the first time and unsure, run
+\`governor doctor\` to inspect current state, or ask the person you're
+working with to confirm before treating this as suspicious. \`governor
+untrain\` removes everything cleanly if it's genuinely unwanted.
+`.trim();
+
+export const PROJECT_OVERRIDE_ID = 'projectoverride';
+
+/** A lean override note for project-scoped on/off — points at the global rules rather than
+ * duplicating their full text, so a project override costs a few lines, not three blocks. */
+export function projectOverrideBlock(active) {
+  return active
+    ? `## Governor: explicitly ON for this project
+
+This project explicitly turns Governor's rules (Plan Mode, mistake journal,
+subagent routing — see your global CLAUDE.md) back ON, overriding a global
+OFF state if one exists. Follow them normally while working here.`
+    : `## Governor: explicitly OFF for this project
+
+This project explicitly turns Governor's rules (Plan Mode, mistake journal,
+subagent routing — normally in your global CLAUDE.md) OFF, overriding the
+global state. Ignore those rules while working in this project only.
+\`governor on --project\` here to resume, or \`governor on\` to check the
+global default elsewhere.`;
+}
+
 export const PLAN_MODE_ID = 'planmode';
 
 export const PLAN_MODE_BLOCK = `

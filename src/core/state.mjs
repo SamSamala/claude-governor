@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { governorDir } from './paths.mjs';
+import { governorDir, projectGovernorDir, projectConfigPath } from './paths.mjs';
 
 /**
  * Tiny persistent state shared between the statusline (sensor) and the hooks (actuators).
@@ -134,16 +134,65 @@ export function writeJSON(name, value) {
   }
 }
 
-export function loadConfig() {
+/**
+ * Read a project's local override, if any. Deliberately tiny — just `{ enabled }` — the
+ * rest of the config (thresholds, window policy, guard mode) stays global-only. A project
+ * override exists only once someone has explicitly run `governor on --project` or
+ * `governor off --project` there; most projects never have this file at all.
+ */
+export function readProjectConfig(cwd) {
+  if (!cwd) return null;
+  try {
+    return JSON.parse(fs.readFileSync(projectConfigPath(cwd), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** Same atomic-write discipline as writeJSON, scoped to the project's own .governor/ dir. */
+export function saveProjectConfig(cwd, partial) {
+  try {
+    const dir = projectGovernorDir(cwd);
+    fs.mkdirSync(dir, { recursive: true });
+    const target = projectConfigPath(cwd);
+    let current = {};
+    try { current = JSON.parse(fs.readFileSync(target, 'utf8')); } catch { /* none yet */ }
+    const next = { ...current, ...partial };
+    const tmp = `${target}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(next));
+    fs.renameSync(tmp, target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `loadConfig(cwd)` — global config, with a project-level `enabled` override applied on top
+ * when `cwd` is given and a project override file exists. Callers with no notion of "current
+ * project" (most CLI commands) call this with no argument and get pure global behavior,
+ * unchanged. Hooks and the statusline — which DO know the current project from their
+ * payload — pass `cwd` so a project-scoped `governor off --project` actually silences them
+ * there without touching any other project or the global default.
+ */
+export function loadConfig(cwd) {
   const c = readJSON(CONFIG, null);
-  if (!c || typeof c !== 'object') return { ...DEFAULT_CONFIG };
-  return {
-    ...DEFAULT_CONFIG,
-    ...c,
-    thresholds: { ...DEFAULT_CONFIG.thresholds, ...(c.thresholds || {}) },
-    guard: { ...DEFAULT_CONFIG.guard, ...(c.guard || {}) },
-    window: { ...DEFAULT_CONFIG.window, ...(c.window || {}) },
-  };
+  const merged = (!c || typeof c !== 'object')
+    ? { ...DEFAULT_CONFIG }
+    : {
+      ...DEFAULT_CONFIG,
+      ...c,
+      thresholds: { ...DEFAULT_CONFIG.thresholds, ...(c.thresholds || {}) },
+      guard: { ...DEFAULT_CONFIG.guard, ...(c.guard || {}) },
+      window: { ...DEFAULT_CONFIG.window, ...(c.window || {}) },
+    };
+
+  const proj = readProjectConfig(cwd);
+  if (proj && typeof proj.enabled === 'boolean') {
+    merged.enabled = proj.enabled;
+    merged.projectOverride = true;
+  }
+  return merged;
 }
 
 export function saveConfig(c) {

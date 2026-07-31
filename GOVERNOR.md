@@ -151,9 +151,19 @@ and `untrain` removes only what it added, leaving everything else in your `CLAUD
 untouched.
 
 **`governor on`/`governor off` own all three rules too, mechanically — not by asking Claude
-to edit the file.** `off` removes all three CLAUDE.md rules and silences every hook and
-statusline addition in one deterministic step; `on` restores all three. Nothing stays
-quietly active while it says OFF.
+to edit the file.** They toggle a `Status: ACTIVE`/`Status: INACTIVE` line **in place inside
+each block** rather than deleting and recreating it — content that vanishes and reappears in
+a shared config file looks exactly like injected content being added and removed, which is
+what got Governor's own rules mistaken for a security incident in a separate session. A
+fourth, untoggled block (`About`) explains plainly that these rules are an intentional,
+user-installed tool, not an injection, and points at `governor doctor` for anyone unsure.
+
+**Scope: global or one project.** `governor on`/`off` (no flag) toggles everywhere.
+`governor on --project`/`off --project`, run from inside a project folder, overrides just
+that project — writes a small `.governor/config.json` there and a short override note in
+that project's own `CLAUDE.md`, without touching the global default or any other project.
+Every hook (and the statusline) reads the current project from its own payload, so a
+project-scoped `off` genuinely silences it there — verified live.
 
 **Six agents** (`gv-*`) with model, effort, `maxTurns` and tools **pinned**, and six skills
 (`gv-handoff`, `gv-retrieve`, `gv-delegate`, `gv-context-hygiene`, `gv-bugplan`, `gv-mistakes`).

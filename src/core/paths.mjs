@@ -25,6 +25,15 @@ export function settingsPath() {
   return path.join(configDir(), 'settings.json');
 }
 
+/** Per-project override dir/file — lets on/off scope to one project without touching global. */
+export function projectGovernorDir(cwd) {
+  return path.join(cwd, '.governor');
+}
+
+export function projectConfigPath(cwd) {
+  return path.join(projectGovernorDir(cwd), 'config.json');
+}
+
 /** Recursively collect *.jsonl transcripts. Returns [] rather than throwing. */
 export function findTranscripts(root = projectsDir()) {
   const out = [];
