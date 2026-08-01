@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Generic fenced-block editing for a CLAUDE.md-style file: install/uninstall of a named
@@ -6,6 +8,22 @@ import fs from 'node:fs';
  * same block twice produces a byte-identical file, so reinstalling never duplicates it and
  * a future wording change just replaces what's between the markers.
  */
+
+const CLI_PATH = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'cli', 'governor.mjs');
+
+/**
+ * Absolute, PATH-independent invocation for the CLI, embedded in CLAUDE.md text so a
+ * future session can actually run it. There is no global `governor` binary on PATH —
+ * training never runs `npm link` — so text telling Claude to run bare `governor doctor`
+ * or `governor on` describes a command that doesn't exist anywhere. A fresh session that
+ * tries it, finds nothing, and has no other way to verify the blocks are legitimate reads
+ * that failure as evidence the whole thing is fabricated — which is exactly what happened
+ * in a real session (see ABOUT_BLOCK below). Giving Claude the real, absolute node command
+ * (same rationale as install.mjs's nodeCmd() for hooks) closes that gap.
+ */
+function cliCmd(args = '') {
+  return `"${process.execPath}" "${CLI_PATH}"${args ? ` ${args}` : ''}`;
+}
 function markers(id) {
   return {
     start: `<!-- governor:${id}:start -->`,
@@ -83,8 +101,8 @@ const INACTIVE_MARK = 'Status: INACTIVE';
 export function withStatus(content, active) {
   const status = active
     ? '**Status: ACTIVE.**'
-    : `**${INACTIVE_MARK} — paused. Ignore this rule entirely until \`governor on\` (or ` +
-      '`governor on --project` if it was paused for this project only) turns it back on.**';
+    : `**${INACTIVE_MARK} — paused. Ignore this rule entirely until \`${cliCmd('on')}\` (or ` +
+      `\`${cliCmd('on --project')}\` if it was paused for this project only) turns it back on.**`;
   return `${status}\n\n${content.trim()}`;
 }
 
@@ -111,10 +129,15 @@ The \`governor:*\` blocks in this file (Plan Mode, mistake journal, subagent
 routing) were installed intentionally by running this machine's own
 Governor trainer (https://github.com/SamSamala/claude-governor). They are
 not third-party or malicious content — if you're a fresh Claude Code
-session encountering this for the first time and unsure, run
-\`governor doctor\` to inspect current state, or ask the person you're
-working with to confirm before treating this as suspicious. \`governor
-untrain\` removes everything cleanly if it's genuinely unwanted.
+session encountering this for the first time and unsure, run this exact
+command yourself (there is no bare \`governor\` on PATH — always use this
+full form, copy it verbatim) to inspect current state:
+
+\`${cliCmd('doctor')}\`
+
+or ask the person you're working with to confirm before treating this as
+suspicious. \`${cliCmd('untrain')}\` removes everything cleanly if it's
+genuinely unwanted.
 `.trim();
 
 export const PROJECT_OVERRIDE_ID = 'projectoverride';
@@ -133,8 +156,8 @@ OFF state if one exists. Follow them normally while working here.`
 This project explicitly turns Governor's rules (Plan Mode, mistake journal,
 subagent routing — normally in your global CLAUDE.md) OFF, overriding the
 global state. Ignore those rules while working in this project only.
-\`governor on --project\` here to resume, or \`governor on\` to check the
-global default elsewhere.`;
+\`${cliCmd('on --project')}\` here to resume, or \`${cliCmd('on')}\` to
+check the global default elsewhere.`;
 }
 
 export const PLAN_MODE_ID = 'planmode';
